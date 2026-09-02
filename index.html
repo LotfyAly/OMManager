@@ -1009,8 +1009,8 @@
   /* ============ Supabase-configuratie ============ */
   // Vul hier de gegevens van je eigen Supabase-project in (Project Settings > API > Project URL / anon public key).
   // Zolang SUPABASE_URL niet is ingevuld, valt de app terug op lokale opslag zonder login.
-  var SUPABASE_URL = 'VUL-HIER-JE-PROJECT-URL-IN';
-  var SUPABASE_ANON_KEY = 'VUL-HIER-JE-ANON-KEY-IN';
+  var SUPABASE_URL = 'https://wtafotbaqpgjnwfaskij.supabase.co';
+  var SUPABASE_ANON_KEY = 'sb_publishable_-j-CGgihMHb-SaAGI_a1Cg_q9wu31mP';
   var supabaseClient = (typeof window.supabase !== 'undefined' && SUPABASE_URL.indexOf('VUL-HIER')===-1)
     ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
     : null;
