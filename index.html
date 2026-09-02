@@ -258,6 +258,13 @@
   .auth-card button{ width:100%; justify-content:center; min-height:38px; background:var(--brand-magenta); border:1px solid var(--brand-magenta); color:#fff; font-weight:700; padding:9px 14px; }
   .auth-card button:hover{ background:var(--accent); border-color:var(--accent); }
   .auth-card button:disabled{ opacity:.6; cursor:default; }
+  .auth-tabs{ display:flex; gap:2px; margin-bottom:16px; border:1px solid var(--line-strong); }
+  .auth-tab{ flex:1; background:var(--paper); border:none; color:var(--ink-soft); font-weight:600; font-family:var(--font-display); font-size:12.5px; padding:8px 6px; }
+  .auth-tab.active{ background:var(--brand-magenta); color:#fff; }
+  .auth-panel[hidden]{ display:none; }
+  .auth-switch{ font-size:12.5px; color:var(--ink-soft); margin:0; }
+  .auth-switch button{ width:auto; min-height:0; background:none; border:none; color:var(--brand-magenta); font-weight:700; padding:0; text-decoration:underline; }
+  .auth-switch button:hover{ background:none; color:var(--accent); }
   #auth-status{ font-size:12.5px; color:var(--ink-soft); margin-top:12px; min-height:16px; }
   #auth-status.error{ color:var(--status-blocked-fg); }
   #auth-status.success{ color:var(--status-done-fg); }
@@ -890,11 +897,29 @@
 <div id="auth-overlay">
   <div class="auth-card">
     <h1>Omgevingsmanagement dashboard</h1>
-    <p>Log in met je e-mailadres. Je ontvangt een inloglink per mail — geen wachtwoord nodig.</p>
-    <form id="auth-form" novalidate>
-      <input id="auth-email" type="email" placeholder="naam@bedrijf.nl" required autocomplete="email">
-      <button type="submit" id="auth-submit">Stuur inloglink</button>
-    </form>
+    <div class="auth-tabs">
+      <button type="button" class="auth-tab active" data-auth-tab="magic">Inloglink</button>
+      <button type="button" class="auth-tab" data-auth-tab="password">Wachtwoord</button>
+    </div>
+
+    <div id="auth-panel-magic" class="auth-panel">
+      <p>Log in met je e-mailadres. Je ontvangt een inloglink per mail — geen wachtwoord nodig.</p>
+      <form id="auth-form" novalidate>
+        <input id="auth-email" type="email" placeholder="naam@bedrijf.nl" required autocomplete="email">
+        <button type="submit" id="auth-submit">Stuur inloglink</button>
+      </form>
+    </div>
+
+    <div id="auth-panel-password" class="auth-panel" hidden>
+      <p id="auth-pw-intro">Log in met je e-mailadres en wachtwoord.</p>
+      <form id="auth-form-password" novalidate>
+        <input id="auth-pw-email" type="email" placeholder="naam@bedrijf.nl" required autocomplete="email">
+        <input id="auth-pw-password" type="password" placeholder="Wachtwoord" required autocomplete="current-password" minlength="6">
+        <button type="submit" id="auth-pw-submit">Inloggen</button>
+      </form>
+      <p class="auth-switch" id="auth-pw-switch">Nog geen wachtwoord ingesteld? <button type="button" id="auth-pw-mode-toggle">Account aanmaken</button></p>
+    </div>
+
     <div id="auth-status"></div>
   </div>
 </div>
@@ -4817,7 +4842,7 @@
   document.getElementById('new-project-btn').innerHTML = ICONS.plus + ' Nieuw project';
   updatePomodoroDisplay();
 
-  /* ============ authenticatie (magic link via Supabase) ============ */
+  /* ============ authenticatie (magic link + e-mail/wachtwoord via Supabase) ============ */
 
   function showAuthOverlay(){ document.getElementById('auth-overlay').classList.add('visible'); }
   function hideAuthOverlay(){ document.getElementById('auth-overlay').classList.remove('visible'); }
@@ -4825,6 +4850,35 @@
     var el = document.getElementById('auth-status');
     el.textContent = msg || '';
     el.className = type || '';
+  }
+
+  var passwordSignupMode = false;
+  function setPasswordMode(isSignup){
+    passwordSignupMode = isSignup;
+    document.getElementById('auth-pw-submit').textContent = isSignup ? 'Account aanmaken' : 'Inloggen';
+    document.getElementById('auth-pw-password').setAttribute('autocomplete', isSignup ? 'new-password' : 'current-password');
+    document.getElementById('auth-pw-intro').textContent = isSignup
+      ? 'Maak een account aan met e-mailadres en wachtwoord.'
+      : 'Log in met je e-mailadres en wachtwoord.';
+    document.getElementById('auth-pw-switch').innerHTML = isSignup
+      ? 'Heb je al een account? <button type="button" id="auth-pw-mode-toggle">Inloggen</button>'
+      : 'Nog geen wachtwoord ingesteld? <button type="button" id="auth-pw-mode-toggle">Account aanmaken</button>';
+    document.getElementById('auth-pw-mode-toggle').addEventListener('click', function(){
+      setPasswordMode(!passwordSignupMode);
+      setAuthStatus('', '');
+    });
+  }
+
+  var authTabs = document.querySelectorAll('.auth-tab');
+  for(var ti=0; ti<authTabs.length; ti++){
+    authTabs[ti].addEventListener('click', function(e){
+      for(var tj=0; tj<authTabs.length; tj++){ authTabs[tj].classList.remove('active'); }
+      e.currentTarget.classList.add('active');
+      var which = e.currentTarget.getAttribute('data-auth-tab');
+      document.getElementById('auth-panel-magic').hidden = which !== 'magic';
+      document.getElementById('auth-panel-password').hidden = which !== 'password';
+      setAuthStatus('', '');
+    });
   }
 
   function startApp(){
@@ -4860,6 +4914,41 @@
         btn.disabled = false;
         if(res.error){ setAuthStatus('Kon geen link versturen: ' + res.error.message, 'error'); return; }
         setAuthStatus('Check je mail — klik op de link om in te loggen.', 'success');
+      }).catch(function(){
+        btn.disabled = false;
+        setAuthStatus('Er ging iets mis. Probeer het opnieuw.', 'error');
+      });
+    });
+
+    setPasswordMode(false);
+    document.getElementById('auth-form-password').addEventListener('submit', function(e){
+      e.preventDefault();
+      var email = document.getElementById('auth-pw-email').value.trim();
+      var password = document.getElementById('auth-pw-password').value;
+      if(!email || !password) return;
+      var btn = document.getElementById('auth-pw-submit');
+      btn.disabled = true;
+      setAuthStatus(passwordSignupMode ? 'Account aanmaken…' : 'Bezig met inloggen…', '');
+      var action = passwordSignupMode
+        ? supabaseClient.auth.signUp({
+            email: email,
+            password: password,
+            options: { emailRedirectTo: window.location.origin + window.location.pathname }
+          })
+        : supabaseClient.auth.signInWithPassword({ email: email, password: password });
+      action.then(function(res){
+        btn.disabled = false;
+        if(res.error){
+          setAuthStatus((passwordSignupMode ? 'Account aanmaken mislukt: ' : 'Inloggen mislukt: ') + res.error.message, 'error');
+          return;
+        }
+        if(passwordSignupMode && res.data && res.data.user && !res.data.session){
+          setAuthStatus('Check je mail om je account te bevestigen. Log daarna hier in met je wachtwoord.', 'success');
+          setPasswordMode(false);
+          return;
+        }
+        // Bij een sessie (inloggen, of aanmaken zonder verplichte e-mailbevestiging)
+        // handelt onAuthStateChange hieronder het starten van de app af.
       }).catch(function(){
         btn.disabled = false;
         setAuthStatus('Er ging iets mis. Probeer het opnieuw.', 'error');
