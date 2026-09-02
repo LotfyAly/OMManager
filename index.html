@@ -4832,9 +4832,6 @@
     appStarted = true;
     hideAuthOverlay();
     loadFromStorage().then(function(loaded){
-      if(!loaded && state.projects.length===0){
-        seedData();
-      }
       renderAll();
     });
   }
