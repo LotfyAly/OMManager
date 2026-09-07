@@ -644,19 +644,24 @@
   }
   .modal{
     background:var(--panel); border:1px solid var(--line-strong); border-radius:var(--radius);
-    width:100%; max-width:460px; padding:22px 24px 24px;
+    width:100%; max-width:460px; padding:22px 24px 24px; box-sizing:border-box;
+    max-height:calc(100vh - 40px); overflow-y:auto;
+  }
+  @media (max-width:640px){
+    .modal-overlay{ padding:16px 10px; }
+    .modal{ padding:16px 16px 18px; max-height:calc(100vh - 32px); }
   }
   .modal-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
   .modal-head h2{ font-size:17px; }
-  .field{ margin-bottom:14px; display:flex; flex-direction:column; gap:5px; }
+  .field{ margin-bottom:14px; display:flex; flex-direction:column; gap:5px; min-width:0; }
   .field label{ font-size:12px; color:var(--ink-soft); font-weight:500; }
   .field input, .field select, .field textarea{
     border:1px solid var(--line-strong); border-radius:2px; padding:8px 9px;
-    background:var(--panel); color:var(--ink);
+    background:var(--panel); color:var(--ink); width:100%; max-width:100%; box-sizing:border-box;
   }
   .field textarea{ resize:vertical; min-height:64px; }
-  .field-row{ display:flex; gap:12px; }
-  .field-row .field{ flex:1; }
+  .field-row{ display:flex; gap:12px; flex-wrap:wrap; }
+  .field-row .field{ flex:1 1 200px; min-width:0; }
   .ts-links{ display:flex; flex-direction:column; gap:8px; margin-bottom:8px; }
   .ts-link-row{ display:flex; gap:6px; align-items:center; }
   .ts-link-row input{ border:1px solid var(--line-strong); border-radius:2px; padding:7px 8px; background:var(--panel); color:var(--ink); font-size:12.5px; }
@@ -1007,7 +1012,7 @@
 
 
   /* ---------- v18: intuitiever actieformulier ---------- */
-  .action-modal{ max-width:740px; padding:0; overflow:hidden; }
+  .action-modal{ max-width:740px; padding:0; overflow-y:auto; }
   .action-modal .modal-head{ margin:0; padding:12px 16px 10px; background:var(--accent); color:#fff; border-bottom:3px solid var(--brand-magenta); }
   .action-modal .modal-head h2{ color:#fff; font-size:17px; }
   .action-modal .modal-head .action-icon{ color:#fff; }
@@ -1060,7 +1065,7 @@
   .action-modal .modal-actions{ margin-top:10px; padding-top:8px; border-top:1px solid var(--line); }
 
   /* ---------- v37: compact actie-overzicht ---------- */
-  .action-view-modal{ max-width:620px; padding:0; overflow:hidden; }
+  .action-view-modal{ max-width:620px; padding:0; overflow-y:auto; }
   .action-view-modal .modal-head{ margin:0; padding:11px 14px 9px; background:var(--accent); color:#fff; border-bottom:3px solid var(--brand-magenta); }
   .action-view-modal .modal-head h2{ color:#fff; font-size:16px; }
   .action-view-modal .modal-head .action-icon{ color:#fff; }
@@ -3888,16 +3893,18 @@
     var root = document.getElementById('modal-root');
     root.innerHTML = '' +
       '<div class="modal-overlay" data-action="overlay-close">' +
-        '<div class="modal" role="dialog" aria-modal="true" aria-label="Project delen">' +
+        '<div class="modal modal-wide" role="dialog" aria-modal="true" aria-label="Project delen">' +
           '<div class="modal-head"><h2>Delen: '+escapeHtml(project.naam||'Naamloos project')+'</h2>' +
             '<button class="action-icon" data-action="close-modal" aria-label="Sluiten">'+ICONS.close+'</button></div>' +
           '<div style="padding:2px 2px 4px;">' +
             '<div class="config-help">Nodig iemand uit op e-mailadres. Diegene moet al een account hebben aangemaakt in deze tool met dat e-mailadres — anders kan er nog niet mee gedeeld worden.</div>' +
-            '<div id="share-members-list" class="team-config-list"><p style="font-size:12.5px;color:var(--ink-faint);">Leden laden…</p></div>' +
-            '<form id="share-invite-form" class="field-row" style="margin-top:12px;align-items:flex-end;">' +
-              '<div class="field" style="flex:2;"><label for="share-email">E-mailadres</label><input id="share-email" type="email" placeholder="naam@organisatie.nl" required></div>' +
-              '<div class="field" style="flex:1;"><label for="share-role">Rechten</label><select id="share-role"><option value="viewer">Alleen bekijken</option><option value="editor">Mag bewerken</option></select></div>' +
-              '<button type="submit" class="btn btn-primary">Uitnodigen</button>' +
+            '<div id="share-members-list" class="team-config-list" style="margin-top:8px;"><p style="font-size:12.5px;color:var(--ink-faint);">Leden laden…</p></div>' +
+            '<form id="share-invite-form" style="margin-top:14px;display:flex;flex-direction:column;gap:10px;">' +
+              '<div class="field-row">' +
+                '<div class="field"><label for="share-email">E-mailadres</label><input id="share-email" type="email" placeholder="naam@organisatie.nl" required></div>' +
+                '<div class="field" style="flex:0 1 190px;"><label for="share-role">Rechten</label><select id="share-role"><option value="viewer">Alleen bekijken</option><option value="editor">Mag bewerken</option></select></div>' +
+              '</div>' +
+              '<button type="submit" class="btn btn-primary" style="align-self:flex-start;">Uitnodigen</button>' +
             '</form>' +
             '<div id="share-status" style="margin-top:8px;font-size:12.5px;color:var(--ink-soft);"></div>' +
           '</div>' +
@@ -3913,9 +3920,9 @@
         return;
       }
       list.innerHTML = members.map(function(m){
-        return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);">' +
-          '<span style="flex:1;font-size:13px;">'+escapeHtml(m.email)+'</span>' +
-          '<select data-member-role="'+m.user_id+'" style="width:150px;">' +
+        return '<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--line);">' +
+          '<span style="flex:1 1 180px;min-width:0;font-size:13px;overflow-wrap:anywhere;">'+escapeHtml(m.email)+'</span>' +
+          '<select data-member-role="'+m.user_id+'" style="flex:0 0 auto;width:auto;min-width:150px;">' +
             '<option value="viewer"'+(m.role==='viewer'?' selected':'')+'>Alleen bekijken</option>' +
             '<option value="editor"'+(m.role==='editor'?' selected':'')+'>Mag bewerken</option>' +
           '</select>' +
@@ -7148,12 +7155,11 @@
     if(storageBackend==='supabase') resetInMemoryProjectData();
     hideAuthOverlay();
     loadFromStorage().then(function(loaded){
-      if(!loaded && state.projects.length===0){
+      if(!loaded && state.projects.length===0 && storageBackend!=='supabase'){
+        // Alleen de lokale/offline demo-versie krijgt voorbeeldprojecten.
+        // De online (Supabase) versie start altijd met een schone lei —
+        // een nieuw of leeggemaakt account laat het lege-project-scherm zien.
         seedData();
-        if(storageBackend==='supabase'){
-          state.projects.forEach(function(p){ newProjectIds[p.id]=true; projectRoles[p.id]='owner'; });
-          scheduleSave();
-        }
       } else if(loaded){
         replaceLegacyDemoIfUntouched();
       }
