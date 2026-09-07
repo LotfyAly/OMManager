@@ -2520,16 +2520,41 @@
       if(savedProjectSignatures[p.id] === sig) return; // niets gewijzigd aan dit project
 
       var isNew = !!newProjectIds[p.id];
+      var isOwner = projectRole(p.id)==='owner';
+      var payload = { data:light, updated_at:new Date().toISOString() };
       var query = isNew
-        ? supabaseClient.from('projects').insert({ id:p.id, owner_id:currentUserId, data:light, updated_at:new Date().toISOString() })
-        : supabaseClient.from('projects').update({ data:light, updated_at:new Date().toISOString() }).eq('id', p.id);
+        ? supabaseClient.from('projects').insert(Object.assign({ id:p.id, owner_id:currentUserId }, payload)).select('id')
+        : supabaseClient.from('projects').update(payload).eq('id', p.id).select('id');
 
       savePromises.push(query.then(function(res){
-        if(res.error) return false;
+        if(res.error){
+          console.error('[omgevingsmanagement] project opslaan mislukt ('+p.id+'):', res.error);
+          return false;
+        }
+        if(!isNew && (!res.data || res.data.length===0) && isOwner){
+          // De rij bestond (nog) niet — bijv. door een onderbroken eerste save.
+          // Probeer 'm als eigenaar alsnog aan te maken in plaats van het stilzwijgend te laten mislukken.
+          return supabaseClient.from('projects').insert(Object.assign({ id:p.id, owner_id:currentUserId }, payload)).select('id')
+            .then(function(res2){
+              if(res2.error){
+                console.error('[omgevingsmanagement] project opnieuw aanmaken mislukt ('+p.id+'):', res2.error);
+                return false;
+              }
+              savedProjectSignatures[p.id] = sig;
+              return true;
+            }).catch(function(err){ console.error('[omgevingsmanagement] project opnieuw aanmaken mislukt:', err); return false; });
+        }
+        if(!isNew && (!res.data || res.data.length===0)){
+          console.error('[omgevingsmanagement] project bijwerken had geen effect (mogelijk geen rechten meer) voor', p.id);
+          return false;
+        }
         savedProjectSignatures[p.id] = sig;
         if(isNew){ delete newProjectIds[p.id]; projectRoles[p.id]='owner'; }
         return true;
-      }).catch(function(){ return false; }));
+      }).catch(function(err){
+        console.error('[omgevingsmanagement] project opslaan mislukt ('+p.id+'):', err);
+        return false;
+      }));
     });
 
     Object.keys(savedAttachmentSignatures).forEach(function(actionId){
@@ -2540,9 +2565,16 @@
       return supabaseClient.from('project_attachments')
         .upsert({ project_id:att.projectId, action_id:att.actionId, content:att.inhoud, updated_at:new Date().toISOString() }, { onConflict:'project_id,action_id' })
         .then(function(res){
-          if(!res.error) savedAttachmentSignatures[att.actionId] = att.sig;
-          return !res.error;
-        }).catch(function(){ return false; });
+          if(res.error){
+            console.error('[omgevingsmanagement] bijlage opslaan mislukt ('+att.actionId+'):', res.error);
+            return false;
+          }
+          savedAttachmentSignatures[att.actionId] = att.sig;
+          return true;
+        }).catch(function(err){
+          console.error('[omgevingsmanagement] bijlage opslaan mislukt ('+att.actionId+'):', err);
+          return false;
+        });
     });
 
     return Promise.all(savePromises.concat(attachmentSaves)).then(function(results){
@@ -2554,11 +2586,12 @@
         if(el) el.textContent = 'Automatisch opgeslagen om ' + hh + ':' + mm;
       }
       if(results.some(function(r){ return r===false; })){
-        showToast('Niet alles kon worden opgeslagen. Controleer je verbinding.');
+        showToast('Niet alles kon worden opgeslagen. Open de browserconsole (F12) voor details, of probeer opnieuw.');
       }
       finishSaveCycle();
       return results.every(function(r){ return r!==false; });
-    }).catch(function(){
+    }).catch(function(err){
+      console.error('[omgevingsmanagement] opslaan mislukt:', err);
       showToast('Automatisch opslaan is mislukt. Controleer je verbinding.');
       finishSaveCycle();
       return false;
