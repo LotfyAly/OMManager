@@ -1411,6 +1411,32 @@
   function projectCanEdit(p){ var r=projectRole(p&&p.id); return r==='owner' || r==='editor'; }
   function projectIsShared(p){ return storageBackend==='supabase' && !!p && projectRoles[p.id] && projectRoles[p.id]!=='owner'; }
 
+  // Acties die nooit projectdata wijzigen (navigatie, weergave, filters, export,
+  // downloads) — die blijven altijd bruikbaar, ook in een 'alleen bekijken'-project.
+  var READONLY_SAFE_ACTIONS = [
+    'select-project','show-overview','show-today','close-modal','overlay-close',
+    'leave-project','export-report','download-pending-attachment','download-preview-email',
+    'close-email-preview','toggle-utility-plugin','close-utility-plugin','view-action',
+    'show-action-on-map','fit-map-layers','zoom-map-layer','zoom-action-map-layer',
+    'open-pending-email-preview','open-email-preview',
+    'pomodoro-toggle','pomodoro-reset','pomodoro-finish-early','pomodoro-skip-break','pomodoro-adjust-minutes','pomodoro-unlink-action'
+  ];
+  function isReadonlySafeAction(action){
+    if(READONLY_SAFE_ACTIONS.indexOf(action)!==-1) return true;
+    if(action.indexOf('show-')===0) return true;
+    if(action.indexOf('set-')===0) return true;
+    if(action.indexOf('cal-')===0) return true;
+    if(action==='toggle-list-filter') return true;
+    return false;
+  }
+  function blockIfProjectReadonly(projectId){
+    if(storageBackend==='supabase' && projectId && projectRole(projectId)==='viewer'){
+      showToast('Dit project is met jou gedeeld als alleen-lezen. Wijzigen kan hier niet.');
+      return true;
+    }
+    return false;
+  }
+
   function storageGet(key){
     if(storageBackend==='workspace') return window.storage.get(key, false);
     if(storageBackend==='local'){
@@ -5441,10 +5467,11 @@
   }
 
   function renderScratchpadModule(project){
+    var ro = storageBackend==='supabase' && projectRole(project.id)==='viewer';
     return '<section class="project-module" id="module-scratchpad">'+
       '<div class="project-module-head"><div><h3>Kladblok</h3><div class="project-module-desc">Vrij notitieveld voor losse gedachten, belpunten en geheugensteuntjes.</div></div></div>'+
-      '<div class="project-module-body"><textarea class="scratchpad-area" data-scratchpad-project="'+project.id+'" placeholder="Schrijf hier snelle projectnotities...">'+escapeHtml(project.scratchpad||'')+'</textarea>'+
-      '<div class="scratchpad-hint">Wordt automatisch opgeslagen bij typen.</div></div></section>';
+      '<div class="project-module-body"><textarea class="scratchpad-area" data-scratchpad-project="'+project.id+'" placeholder="Schrijf hier snelle projectnotities..."'+(ro?' readonly':'')+'>'+escapeHtml(project.scratchpad||'')+'</textarea>'+
+      '<div class="scratchpad-hint">'+(ro?'Gedeeld als alleen-lezen — hier kun je niets wijzigen.':'Wordt automatisch opgeslagen bij typen.')+'</div></div></section>';
   }
 
   var PERMIT_STATUSES = [
@@ -6446,6 +6473,13 @@
     var projId = t.getAttribute('data-project');
     var parentId = t.getAttribute('data-parent');
 
+    if(storageBackend==='supabase' && !isReadonlySafeAction(action)){
+      var guardProjectId = projId
+        || (['edit-project','delete-project','share-project'].indexOf(action)!==-1 ? id : null)
+        || (currentScreen==='project' ? state.activeProjectId : null);
+      if(guardProjectId && blockIfProjectReadonly(guardProjectId)) return;
+    }
+
     switch(action){
       case 'select-project':
         currentScreen = 'project'; state.activeProjectId = id; openUtilityPlugin=null; renderAll(); break;
@@ -6681,6 +6715,7 @@
 
   document.addEventListener('change', function(e){
     if(e.target.matches('[data-action="toggle-action-flag"]')){
+      if(blockIfProjectReadonly(e.target.getAttribute('data-project'))){ e.target.checked=!e.target.checked; return; }
       var flagProject=findProject(e.target.getAttribute('data-project'));
       var flagTheme=e.target.getAttribute('data-theme');
       var flagId=e.target.getAttribute('data-id');
@@ -6700,6 +6735,7 @@
       if(!pStatus) return;
       var action = (pStatus.themas[theme]||[]).find(function(a){ return a.id===id; });
       if(action){
+        if(blockIfProjectReadonly(pStatus.id)){ e.target.value=action.status; return; }
         if(e.target.value==='afgerond' && action.status!=='afgerond'){
           var linkedStatus = { project:pStatus, theme:themeMeta(pStatus,theme), action:action };
           e.target.value = action.status;
@@ -6714,6 +6750,7 @@
     if(e.target.matches('[data-action="toggle-subaction-complete"]')){
       var checkFound=findSubaction(e.target.getAttribute('data-project'),e.target.getAttribute('data-theme'),e.target.getAttribute('data-parent'),e.target.getAttribute('data-id'));
       if(checkFound && checkFound.subaction){
+        if(blockIfProjectReadonly(e.target.getAttribute('data-project'))){ e.target.checked=!e.target.checked; return; }
         checkFound.subaction.status=e.target.checked?'afgerond':'open';
         checkFound.subaction.bijgewerktOp=new Date().toISOString().slice(0,10);
         checkFound.parent.bijgewerktOp=checkFound.subaction.bijgewerktOp;
@@ -6731,6 +6768,7 @@
     if(e.target.matches('[data-action="change-subaction-status"]')){
       var subFoundStatus=findSubaction(e.target.getAttribute('data-project'),e.target.getAttribute('data-theme'),e.target.getAttribute('data-parent'),e.target.getAttribute('data-id'));
       if(subFoundStatus && subFoundStatus.subaction){
+        if(blockIfProjectReadonly(e.target.getAttribute('data-project'))){ e.target.value=subFoundStatus.subaction.status; return; }
         subFoundStatus.subaction.status=e.target.value;
         subFoundStatus.subaction.bijgewerktOp=new Date().toISOString().slice(0,10);
         subFoundStatus.parent.bijgewerktOp=subFoundStatus.subaction.bijgewerktOp;
@@ -6774,16 +6812,19 @@
       handleEmlFile(file);
     }
     if(e.target.matches('[data-action="toggle-map-layer"]')){
+      if(blockIfProjectReadonly(e.target.getAttribute('data-project'))){ e.target.checked=!e.target.checked; return; }
       var mapProject=findProject(e.target.getAttribute('data-project'));
       if(mapProject) toggleMapLayer(mapProject,e.target.getAttribute('data-id'),e.target.checked);
     }
     if(e.target.matches('[data-action="toggle-action-map-layer"]')){
+      if(blockIfProjectReadonly(e.target.getAttribute('data-project'))){ e.target.checked=!e.target.checked; return; }
       var actionMapProject=findProject(e.target.getAttribute('data-project'));
       if(actionMapProject) toggleActionMapLayer(actionMapProject,e.target.getAttribute('data-id'),e.target.checked);
     }
     if(e.target.id==='geojson-input'){
       var geoFiles=e.target.files;
       var geoProjectId=e.target.getAttribute('data-project');
+      if(blockIfProjectReadonly(geoProjectId)){ e.target.value=''; return; }
       if(geoFiles && geoFiles.length) handleGeoJsonFiles(geoProjectId,geoFiles);
       e.target.value='';
     }
@@ -6792,7 +6833,9 @@
   var searchRenderTimer=null;
   document.addEventListener('input', function(e){
     if(e.target.matches('[data-scratchpad-project]')){
-      var scratchProject=findProject(e.target.getAttribute('data-scratchpad-project'));
+      var scratchProjectId=e.target.getAttribute('data-scratchpad-project');
+      if(storageBackend==='supabase' && projectRole(scratchProjectId)==='viewer') return; // alleen-lezen: input al geblokkeerd via 'readonly', dit is een extra vangnet zonder toast-spam
+      var scratchProject=findProject(scratchProjectId);
       if(scratchProject){ scratchProject.scratchpad=e.target.value; scheduleSave(); }
       return;
     }
